@@ -1,11 +1,10 @@
 #![allow(dead_code)]
 
+
 #[derive(Debug, PartialEq)]
-pub enum TokenType {
+pub enum Token {
     Illegal,
     Eof,
-    Ident,
-    Int,
     Assign,
     Plus,
     Comma,
@@ -14,23 +13,17 @@ pub enum TokenType {
     Rparen,
     Lbrace,
     Rbrace,
-    Function(String),
-    Let(String),
+    Let,
+    Ident(String),
+    Int(String),
+    Function, 
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Token {
-    token: TokenType,
-    literal: String
-}
-
-impl Token {
-    pub fn new(token: TokenType, literal: &str) -> Self {
-        Token {
-            token,
-            literal : literal.to_string()
-        }
+pub fn lookup_ident(literal: &str) -> Token {
+    match literal {
+        "fn" => Token::Function,
+        "let" => Token::Let,
+        word => Token::Ident(word.to_string())
     }
 }
-
 
