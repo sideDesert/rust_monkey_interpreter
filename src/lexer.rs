@@ -27,8 +27,13 @@ impl Lexer {
         }
         false
     }
+
     fn is_digit(ch:char) -> bool{
         ch.is_numeric()
+    }
+    
+    pub fn peek_char(&self) -> char{
+        self.input.chars().nth(self.read_position).unwrap_or('\0')
     }
 
     pub fn read_char(&mut self){
@@ -53,8 +58,8 @@ impl Lexer {
     }
     pub fn next_token(&mut self) -> Token{
         self.skip_whitespace();
-        let token = match self.ch{
-            Some('=') => Token::Assign, 
+        let token = match self.ch {
+            Some('-') => Token::Minus, 
             Some('+') => Token::Plus,
             Some(';') => Token::Semicolon, 
             Some('(') => Token::Lparen, 
@@ -62,19 +67,28 @@ impl Lexer {
             Some('{') => Token::Lbrace,
             Some('}') => Token::Rbrace,
             Some(',') => Token::Comma,
-            None => Token::Eof,
-            Some(char) => {
-                if Self::is_letter(char) {
-                    let literal = self.read_identifier();
-                    return lookup_ident(literal);
-                } 
-
-                if Self::is_digit(char) {
-                    let number = self.read_number();
-                    return Token::Int(number.to_string());
-                }
-                Token::Illegal
+            Some('<') => Token::Lt,
+            Some('>') => Token::Gt,
+            Some('*') => Token::Asterisk,
+            Some('/') => Token::Slash,
+            Some('=') if self.peek_char() == '=' => {
+                self.read_char();
+                Token::Eq
             }
+            Some('=') => Token::Assign,
+            Some('!') if self.peek_char() == '=' => {
+                self.read_char();
+                Token::NotEq
+            }
+            Some('!') => Token::Bang,
+            Some(char) if Self::is_letter(char)  => {
+                    return lookup_ident(self.read_identifier())
+            },
+            Some(char) if Self::is_digit(char)  => {
+                    return Token::Int(self.read_number().to_string());
+            },
+            Some(_char) => Token::Illegal,
+            None => Token::Eof,
         };
         self.read_char();
         token
@@ -115,11 +129,12 @@ mod test {
     fn test_next_token(){
         let raw_input = "let five = 5;
 let ten = 10;
-let add = fn(x,y){
-    x+y;
-}
-
-let result = add(five,ten)";
+let add = fn(x, y) {
+x + y;
+};
+let result = add(five, ten);
+!-/*5;
+5 < 10 > 5;";
         let input = String::from(raw_input);
         let mut l = Lexer::new(&input);
         let tests = vec![
@@ -148,6 +163,7 @@ let result = add(five,ten)";
             Ident("y".to_string()),
             Semicolon,
             Rbrace,
+            Semicolon,
             Let,
             Ident("result".to_string()),
             Assign,
@@ -157,6 +173,19 @@ let result = add(five,ten)";
             Comma,
             Ident("ten".to_string()),
             Rparen,
+            Semicolon,
+            Bang,
+            Minus,
+            Slash,
+            Asterisk,
+            Int("5".to_string()),
+            Semicolon,
+            Int("5".to_string()),
+            Lt,
+            Int("10".to_string()),
+            Gt,
+            Int("5".to_string()),
+            Semicolon,
         ];
 
         for test in tests {
