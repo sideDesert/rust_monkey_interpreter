@@ -117,7 +117,6 @@ impl Lexer {
         let end = self.position;
         &self.input[start..end]
     }
-
 }
 
 #[cfg(test)]
