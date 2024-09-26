@@ -2,6 +2,7 @@ mod lexer;
 mod token;
 mod repl;
 mod ast;
+mod parser;
 use users::{get_current_uid, get_user_by_uid};
 
 fn main() {

@@ -1,34 +1,89 @@
+#![allow(dead_code)]
+
 use std::ops::Deref;
 use crate::token::Token;
 
-trait Node {
+#[derive(Debug, PartialEq)]
+pub enum StatementType {
+    Let
+}
+
+pub trait Node {
     fn token_literal(&self) -> String;
 }
 
-trait Statement: Node{
+pub trait Statement: Node{
     fn statement_node(&self);
+    fn statement_type(&self) -> StatementType;
 }
 
-trait Expressions: Node{
+pub trait Expression: Node{
     fn expression_node(&self);
 }
 
-struct Identifier {
-    token: Token,
-    value: String,
+
+pub struct Identifier {
+    pub token: Token,
+    pub value: String,
 }
 
-pub struct LetStatement<'let_statement> {
-    token: Token,
-    name: &'let_statement Identifier,
-    value: dyn Expressions
+impl Node for Identifier {
+    fn token_literal(&self) -> String {
+        self.token.get_literal()
+    }
 }
+impl Identifier {
+    pub fn new(token: Token) -> Self {
+        Self{
+            token: token.clone(),
+            value: token.get_literal(),
+        }
+    }
+    pub fn expression_node(&self){}
+}
+
+
+pub struct LetStatement {
+    pub token: Token,
+    pub name:  Option<Identifier>,
+    pub value: Option<Box<dyn Expression>>
+}
+
+impl Node for LetStatement {
+    fn token_literal(&self) -> String {
+        "let".to_string()
+    }
+}
+impl Statement for LetStatement {
+    fn statement_node(&self) {
+        
+    }
+
+    fn statement_type(&self) -> StatementType {
+        StatementType::Let
+    }
+}
+impl LetStatement {
+    pub fn new(token: Token)-> Self{
+        Self {
+            token: token.clone(),
+            name:  None,
+            value: None
+        }
+    }
+}
+
 
 pub struct Program {
-    statements: Vec<Box<dyn Statement>>,
+    pub statements: Vec<Box<dyn Statement>>,
 }
 
 impl Program {
+    pub fn new() -> Self {
+        Self {
+            statements: vec![]
+        }
+    }
     pub fn token_literal(&self) -> String {
         match self.statements.first() {
             Some(el) => el.deref().token_literal(),
@@ -37,9 +92,3 @@ impl Program {
     }
 }
 
-impl Identifier {
-    fn expression_node(&self){}
-    fn token_literal(&self) -> String {
-        self.token.get_literal()
-    }
-}
