@@ -1,27 +1,21 @@
 #![allow(dead_code)]
-
-use std::ops::Deref;
 use crate::token::Token;
 
-#[derive(Debug, PartialEq)]
-pub enum StatementType {
-    Let
-}
+
 
 pub trait Node {
     fn token_literal(&self) -> String;
 }
 
-pub trait Statement: Node{
+pub trait StatementTrait: Node {
     fn statement_node(&self);
-    fn statement_type(&self) -> StatementType;
 }
 
-pub trait Expression: Node{
+pub trait Expression: Node + std::fmt::Debug {
     fn expression_node(&self);
 }
 
-
+#[derive(Debug)]
 pub struct Identifier {
     pub token: Token,
     pub value: String,
@@ -32,50 +26,52 @@ impl Node for Identifier {
         self.token.get_literal()
     }
 }
+
 impl Identifier {
     pub fn new(token: Token) -> Self {
-        Self{
+        Self {
             token: token.clone(),
             value: token.get_literal(),
         }
     }
-    pub fn expression_node(&self){}
+    pub fn expression_node(&self) {}
 }
 
-
-pub struct LetStatement {
-    pub token: Token,
-    pub name:  Option<Identifier>,
-    pub value: Option<Box<dyn Expression>>
+#[derive(Debug)]
+pub enum Statement {
+    Let {
+        token: Token,
+        name : Option<Identifier>,
+        value: Option<Box<dyn Expression>>,
+    },
+    Return {
+        token: Token,
+        value: Option<Box<dyn Expression>>
+    }
 }
 
-impl Node for LetStatement {
+impl Node for Statement {
     fn token_literal(&self) -> String {
-        "let".to_string()
-    }
-}
-impl Statement for LetStatement {
-    fn statement_node(&self) {
-        
-    }
-
-    fn statement_type(&self) -> StatementType {
-        StatementType::Let
-    }
-}
-impl LetStatement {
-    pub fn new(token: Token)-> Self{
-        Self {
-            token: token.clone(),
-            name:  None,
-            value: None
+        match self {
+            Self::Return{token:_, value: _} => "return".to_string(),
+            Self::Let{token: _, name:_, value:_}  => "let".to_string()
         }
     }
 }
 
+impl StatementTrait for Statement {
+    fn statement_node(&self) {}
+}
 
+impl Statement {
+    pub fn new_let(token: Token) -> Self {
+        Self::Let { token, name: None, value: None }
+    }
+}
+
+#[derive(Debug)]
 pub struct Program {
-    pub statements: Vec<Box<dyn Statement>>,
+    pub statements: Vec<Statement>,
 }
 
 impl Program {
@@ -86,7 +82,7 @@ impl Program {
     }
     pub fn token_literal(&self) -> String {
         match self.statements.first() {
-            Some(el) => el.deref().token_literal(),
+            Some(el) => el.token_literal(),
             None => "".to_string()
         }
     }
