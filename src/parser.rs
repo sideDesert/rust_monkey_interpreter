@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::ast::{Identifier, Program, Statement};
+use crate::ast::{ Identifier, Program, Statement};
 use crate::lexer::Lexer;
 use crate::token::Token;
 
@@ -10,6 +10,7 @@ pub struct Parser<'parser> {
     peek_token: Option<Token>,
     errors: Vec<String>,
 }
+
 
 impl<'parser> Parser<'parser> {
     pub fn new(lexer: &'parser mut Lexer) -> Self {
@@ -22,6 +23,18 @@ impl<'parser> Parser<'parser> {
         p.next_token();
         p.next_token();
         p
+    }
+
+    pub fn prefix_parse_fns(&self, token: Token) -> Option<i32> {
+        match token {
+            _ => None
+        }
+    }
+    
+    pub fn infix_parse_fns(&self, token: Token) -> Option<i32> {
+        match token {
+            _ => None
+        }
     }
 
     pub fn parse_program(&mut self) -> Program {
@@ -59,7 +72,9 @@ impl<'parser> Parser<'parser> {
                 Token::Return => {
                     self.parse_return_statement()
                 }
-                _ => None
+                _ => {
+                    self.parse_expression_statement()
+                }
             }
         } else {
             None
@@ -67,7 +82,7 @@ impl<'parser> Parser<'parser> {
     }
 
     fn parse_let_statement(&mut self) -> Option<Statement> {
-        let mut stmt = Statement::new_let(self.cur_token.clone()?);
+        let mut stmt = Statement::new(self.cur_token.clone()?).expect("Expected Let Token, got {token}");
         if let Statement::Let{
             token: _, 
             ref mut name,
@@ -89,36 +104,31 @@ impl<'parser> Parser<'parser> {
             while !self.cur_token_is(Token::Semicolon) {
                 self.next_token();
             }
+
             return Some(stmt)
         }
         None
     }
 
     fn parse_return_statement(&mut self) -> Option<Statement> {
-        let mut stmt = Statement::new_return(self.cur_token.clone()?);
+        let mut stmt = Statement::new(self.cur_token.clone()?).expect("Expected Return token, got {token}");
         if let Statement::Return{
             token: _, 
             value: _ 
         } = &mut stmt {
-
-            if !matches!(self.peek_token, Some(Token::Ident(_))){
-                return None
-            }                 
-
             self.next_token();
 
-            *name = Some(Identifier::new(self.cur_token.clone()?));
-            if !self.expect_peek(Token::Assign){
-                return None
-            }
-
-            // TODO: Skipping expression until semicolon cuz we noobies
-            while !self.cur_token_is(Token::Semicolon) {
+            while !self.cur_token_is(Token::Semicolon){
                 self.next_token();
             }
-            return Some(stmt)
+
+            return Some(stmt);
         }
         None
+    }
+
+    fn parse_expression_statement(&mut self) -> Option<Statement> {
+        
     }
 
     fn cur_token_is(&self, t: Token) -> bool {
@@ -147,7 +157,8 @@ impl<'parser> Parser<'parser> {
 
 #[cfg(test)]
 mod test {
-    use crate::{ast::{Node, Statement}, lexer::Lexer, token::Token};
+
+    use crate::{ast::{Node, Statement}, lexer::Lexer };
     use super::Parser;
 
     #[test]
@@ -188,7 +199,7 @@ return 993322;";
 
         let statements = program.statements;
         for stmt in &statements {
-            if let Statement::Return { token, value } = stmt {
+            if let Statement::Return { token: _, value: _ } = stmt {
                 if stmt.token_literal() != "return" {
                     panic!("Statement::Return.token is not type return, got {}", stmt.token_literal());
                 }
@@ -233,5 +244,22 @@ return 993322;";
         }
         eprintln!("statement is not type Statement::Let");
         false
+    }
+
+    // Need to complete this
+    fn test_identifier_expression(){
+        //let input = "foobar";
+        //let mut l = Lexer::new(input);
+        //let mut p = Parser::new(&mut l);
+        //let program = p.parse_program();
+        //check_parser_errors(&p);
+
+        //assert_eq!(1, program.statements.len() as i32);
+        //if let stmt = program.statements.first().unwrap() {
+        //    match stmt {
+
+        //    }
+        //}
+
     }
 }
