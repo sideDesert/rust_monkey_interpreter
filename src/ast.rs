@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use crate::token::Token;
-use std::fmt::{Display, Debug};
+use std::{any::Any, fmt::{Debug, Display}};
 
 pub trait Node: Display {
     fn token_literal(&self) -> String;
@@ -12,6 +12,7 @@ pub trait StatementTrait: Node {
 
 pub trait Expression: Node + Debug {
     fn expression_node(&self);
+    fn as_any(&self) -> &dyn Any;
 }
 
 
@@ -98,6 +99,15 @@ pub struct Identifier {
 impl Node for Identifier {
     fn token_literal(&self) -> String {
         self.token.get_literal()
+    }
+}
+impl Expression for Identifier {
+    fn expression_node(&self) {
+        
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

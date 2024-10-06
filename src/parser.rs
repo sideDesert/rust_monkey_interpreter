@@ -1,8 +1,26 @@
 #![allow(dead_code)]
 
-use crate::ast::{ Identifier, Program, Statement};
+use std::ops::Deref;
+
+use crate::ast::{ Expression, Identifier, Program, Statement};
 use crate::lexer::Lexer;
 use crate::token::Token;
+
+#[derive(Debug, Clone, Copy)]
+pub enum Precedence {
+    Lowest = 0,
+    Equals = 1,
+    LessGreater = 2,
+    Sum = 3,
+    Product = 4,
+    Prefix = 5,
+}
+
+impl Precedence {
+    pub fn as_int(&self) -> i32 {
+        *self as i32
+    }
+}
 
 pub struct Parser<'parser> {
     pub lexer: &'parser mut Lexer,
@@ -12,7 +30,12 @@ pub struct Parser<'parser> {
 }
 
 
+use Precedence::*;
+
+
 impl<'parser> Parser<'parser> {
+    
+
     pub fn new(lexer: &'parser mut Lexer) -> Self {
         let mut p = Self {
             cur_token: None,
@@ -25,13 +48,25 @@ impl<'parser> Parser<'parser> {
         p
     }
 
-    pub fn prefix_parse_fns(&self, token: Token) -> Option<i32> {
+    pub fn prefix_parse_fns(&'parser self, token: &Token) -> Option<Box<dyn Fn() -> Box<dyn Expression> + 'parser>> {
         match token {
+            Token::Ident(_) => {
+                Some(Box::new(
+                    ||{
+                        Box::new(
+                            Identifier{
+                                value: self.cur_token.as_ref().unwrap().get_literal(),
+                                token: self.cur_token.clone().unwrap(),
+                            }
+                        ) as Box<dyn Expression>
+                    }
+                ))
+            },
             _ => None
         }
     }
-    
-    pub fn infix_parse_fns(&self, token: Token) -> Option<i32> {
+
+    pub fn infix_parse_fns(&'parser self, token: &Token) -> Option<Box<dyn Fn(dyn Expression) -> Box<dyn Expression> + 'parser>> {
         match token {
             _ => None
         }
@@ -51,7 +86,7 @@ impl<'parser> Parser<'parser> {
     pub fn errors(&self) -> &Vec<String> {
         &self.errors
     }
-        
+
     fn peek_error(&mut self, t: Token) {
         let msg = format!("expected next token to be {}, got {:?} instead", &t.get_literal(), self.peek_token.as_ref().unwrap().get_literal());
         self.errors.push(msg);
@@ -127,8 +162,28 @@ impl<'parser> Parser<'parser> {
         None
     }
 
+    fn parse_expression(&self, precedence: Precedence) -> Option<Box<dyn Expression>> {
+        let mut exp = None;
+        if let Some(token) = &self.cur_token {
+            let prefix = self.prefix_parse_fns(token);
+            exp = prefix.map(|prefix|{
+                prefix()
+            });
+        }
+        exp
+    }
+
     fn parse_expression_statement(&mut self) -> Option<Statement> {
-        
+        let stmt = Statement::Expression { 
+            token: self.cur_token.clone()?, 
+            expression:  self.parse_expression(Lowest)
+        };
+
+        if self.peek_token_is(Token::Semicolon) {
+            self.next_token();
+        }
+
+        Some(stmt)
     }
 
     fn cur_token_is(&self, t: Token) -> bool {
@@ -144,7 +199,7 @@ impl<'parser> Parser<'parser> {
             Some(tok) => *tok == t
         }
     }
-    
+
     fn expect_peek(&mut self, t: Token) -> bool {
         if self.peek_token_is(t.clone()){
             self.next_token();
@@ -158,7 +213,9 @@ impl<'parser> Parser<'parser> {
 #[cfg(test)]
 mod test {
 
-    use crate::{ast::{Node, Statement}, lexer::Lexer };
+    use std::ops::Deref;
+
+    use crate::{ast::{Identifier, Node, Statement}, lexer::Lexer };
     use super::Parser;
 
     #[test]
@@ -208,7 +265,7 @@ return 993322;";
             }
         }
     }
-    
+
     fn check_parser_errors(p: &Parser){
         let errors = &p.errors;
 
@@ -248,18 +305,27 @@ return 993322;";
 
     // Need to complete this
     fn test_identifier_expression(){
-        //let input = "foobar";
-        //let mut l = Lexer::new(input);
-        //let mut p = Parser::new(&mut l);
-        //let program = p.parse_program();
-        //check_parser_errors(&p);
+        let input = "foobar";
+        let mut l = Lexer::new(input);
+        let mut p = Parser::new(&mut l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
 
-        //assert_eq!(1, program.statements.len() as i32);
-        //if let stmt = program.statements.first().unwrap() {
-        //    match stmt {
-
-        //    }
-        //}
+        assert_eq!(1, program.statements.len() as i32);
+        if let Some(stmt) = program.statements.first() {
+            match stmt {
+                Statement::Expression { token: _, expression } => {
+                    match expression.as_ref().unwrap().deref().as_any().downcast_ref::<Identifier>() {
+                        Some(ident) => {
+                            assert_eq!(ident.value, "foobar");
+                            assert_eq!(ident.token_literal(), "foobar");
+                        },
+                        None => panic!("A isn't Expression")
+                    }
+                },
+                _ => panic!("Statement received is not type Statement::Expression")
+            }
+        }
 
     }
 }
