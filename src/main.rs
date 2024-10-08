@@ -4,6 +4,10 @@ mod repl;
 mod ast;
 mod parser;
 
+use crate::ast::*;
+use crate::parser::*;
+use crate::lexer::*;
+
 mod welcome {
     use users::{get_current_uid, get_user_by_uid};
     pub fn print(){
@@ -20,7 +24,105 @@ mod welcome {
 
     }
 }
+
+
+fn test_parsing_infix_expression() {
+    struct Input {
+        input: &'static str,
+        left_value: i32,
+        operator: &'static str,
+        right_value: i32,
+    }
+
+    impl Input {
+        fn new(
+            input: &'static str,
+            left_value: i32,
+            operator: &'static str,
+            right_value: i32,
+        ) -> Self {
+            Self {
+                input,
+                left_value,
+                operator,
+                right_value,
+            }
+        }
+    }
+
+    let input = [
+        Input::new("5+5", 5, "+", 5),
+        Input::new("5/ 5", 5, "/", 5),
+        Input::new("5-5", 5, "-", 5),
+        Input::new("5*5", 5, "*", 5),
+        Input::new("5>5", 5, ">", 5),
+        Input::new("5<5", 5, "<", 5),
+        Input::new("5 == 5", 5, "==", 5),
+        Input::new("5 != 5", 5, "!=", 5),
+    ];
+
+    for test_case in input {
+        let mut l = Lexer::new(test_case.input);
+        let mut p = Parser::new(&mut l);
+        let program = p.parse_program();
+
+        if program.statements.len() != 1 {
+            eprintln!("{:?}", program.statements);
+            panic!("program.statements.len() != 1");
+        }
+
+        if let Some(stmt) = program.statements.first() {
+            match stmt {
+                Statement::Expression {
+                    token: _,
+                    expression,
+                } => match expression {
+                    Some(expression) => {
+                        match expression
+                            .as_ref()
+                            .as_any()
+                            .downcast_ref::<InfixExpression>()
+                        {
+                            Some(exp) => {
+                                assert_eq!(exp.operator, test_case.operator);
+                                if !test_integer_literal(
+                                    exp.right.as_ref(),
+                                    test_case.left_value,
+                                ) {
+                                    return;
+                                }
+
+                                if !test_integer_literal(
+                                    exp.left.as_ref(),
+                                    test_case.right_value,
+                                ) {
+                                    return;
+                                }
+                            }
+                            None => panic!("Expression is not of type InfixExpression"),
+                        }
+                    }
+                    None => panic!("Expression is None"),
+                },
+                _ => panic!("Statement is not of type Statement::Expression"),
+            }
+        }
+    }
+}
+
+fn test_integer_literal(il: &dyn Expression, value: i32) -> bool {
+    match il.as_any().downcast_ref::<IntegerLiteral>() {
+        Some(integ) => {
+            assert_eq!(integ.value, value);
+            assert_eq!(integ.token_literal(), format!("{}", value));
+        }
+        None => panic!("il is not an IntegerLiteral"),
+    }
+    true
+}
+
 fn main() {
+    test_parsing_infix_expression();
     welcome::print();
     repl::start();
 }

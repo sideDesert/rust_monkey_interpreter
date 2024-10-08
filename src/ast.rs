@@ -126,6 +126,104 @@ impl Identifier {
     }
 }
 
+
+#[derive(Debug)]
+pub struct IntegerLiteral {
+    pub token: Token,
+    pub value: i32,
+}
+
+impl Node for IntegerLiteral {
+    fn token_literal(&self) -> String {
+        self.token.get_literal()
+    }
+}
+
+impl Expression for IntegerLiteral {
+    fn expression_node(&self) {
+        
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Display for IntegerLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f,"{}", self.value)
+    }
+}
+
+impl IntegerLiteral {
+    pub fn new(token: Token, value: i32) -> Self {
+        Self {
+            token: token.clone(),
+            value
+        }
+    }
+}
+
+// Prefix Expression
+#[derive(Debug)]
+pub struct PrefixExpression {
+    pub token: Token,
+    pub operator: String,
+    pub right: Box<dyn Expression>
+}
+
+impl Expression for PrefixExpression {
+    fn expression_node(&self) {}
+
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Display for PrefixExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f,"({}{})", self.operator, self.right)
+    }
+}
+
+impl Node for PrefixExpression {
+    fn token_literal(&self) -> String {
+        self.token.get_literal()
+    }
+}
+
+// Infix Expression
+#[derive(Debug)]
+pub struct InfixExpression {
+    pub token: Token,
+    pub left: Box<dyn Expression>,
+    pub right: Box<dyn Expression>,
+    pub operator: String,
+}
+
+impl Expression for InfixExpression {
+    fn expression_node(&self) {}
+
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Display for InfixExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f,"({} {} {})", self.left, self.operator, self.right)
+    }
+}
+
+impl Node for InfixExpression {
+    fn token_literal(&self) -> String {
+        self.token.get_literal()
+    }
+}
+
+// Program
 #[derive(Debug)]
 pub struct Program {
     pub statements: Vec<Statement>,
