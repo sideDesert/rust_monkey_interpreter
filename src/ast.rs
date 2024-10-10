@@ -252,6 +252,98 @@ impl Node for InfixExpression {
     }
 }
 
+// If Expression
+#[derive(Debug)]
+pub struct IfExpression {
+    pub token: Token,
+    pub condition: Box<dyn Expression>,
+    pub consequence: BlockStatement,
+    pub alternative: Option<BlockStatement>,
+}
+
+impl Expression for IfExpression {
+    fn expression_node(&self) {}
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Display for IfExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "if ({}) {}", self.condition, self.consequence)?;
+        if let Some(alt) = &self.alternative {
+            write!(f, " else {}", alt)?;
+        } 
+        Ok(())
+    }
+}
+
+impl Node for  IfExpression{
+    fn token_literal(&self) -> String {
+        self.token.get_literal()
+    }
+}
+
+// Function Literal 
+#[derive(Debug)]
+pub struct FunctionLiteral {
+    pub token: Token,
+    pub parameters: Vec<Identifier>,
+    pub body: BlockStatement
+}
+
+impl Expression for FunctionLiteral{
+    fn expression_node(&self) {}
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Display for FunctionLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "fn( ")?;
+        for param in self.parameters.iter() {
+            write!(f, "{}, ", param)?;
+        }
+        writeln!(f, ")")?;
+        
+        write!(f, "{}", self.body)?;
+
+        Ok(())
+    }
+}
+
+impl Node for FunctionLiteral {
+    fn token_literal(&self) -> String {
+        self.token.get_literal()
+    }
+}
+
+
+// Block Statement
+#[derive(Debug)]
+pub struct BlockStatement{
+    pub token: Token,
+    pub statements: Vec<Statement>
+}
+
+impl Display for  BlockStatement{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for stmt in self.statements.iter() {
+            write!(f, "{}", stmt)?;
+        }
+        Ok(())
+    }
+}
+
+impl Node for BlockStatement {
+    fn token_literal(&self) -> String {
+        self.token.get_literal()
+    }
+}
+
 // Program
 #[derive(Debug)]
 pub struct Program {

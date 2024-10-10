@@ -3,7 +3,7 @@
 use crate::ast::{Expression, Identifier, InfixExpression, IntegerLiteral, PrefixExpression, Program, Statement};
 use crate::lexer::Lexer;
 use crate::token::Token;
-use crate::Boolean;
+use crate::{BlockStatement, Boolean, IfExpression};
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum Precedence {
@@ -70,6 +70,7 @@ impl<'parser> Parser<'parser> {
             Token::Minus => self.parse_prefix_expression(),
             Token::True => self.parse_boolean(),
             Token::False => self.parse_boolean(),
+            Token::If => self.parse_if_expression(),
             _ => None,
         }
     }
@@ -256,6 +257,60 @@ impl<'parser> Parser<'parser> {
         ))
     }
 
+    fn parse_if_expression(&mut self) -> Option<Box<dyn Expression>> {
+        if !self.expect_peek(Token::Lparen){
+            return None
+        }
+
+        self.next_token();
+        let condition = self.parse_expression(Precedence::Lowest)?;
+
+        if !self.expect_peek(Token::Rparen){
+            return None
+        }
+        if !self.expect_peek(Token::Lbrace){
+            return None
+        }
+
+        let consequence = self.parse_block_statement();
+        let mut alternative = None;
+        if self.peek_token_is(Token::Else) {
+            self.next_token();
+
+            if !self.expect_peek(Token::Lbrace){
+                return None
+            }
+            alternative = Some(self.parse_block_statement());
+        }
+        
+        Some(Box::new(IfExpression{
+            token: self.cur_token.clone()?,
+            alternative,
+            condition,
+            consequence,
+        }))
+    }
+
+    fn parse_block_statement(&mut self) -> BlockStatement {
+        let token = self.cur_token.clone().unwrap();
+        let mut statements: Vec<Statement> = vec![];
+
+        self.next_token();
+
+        while self.cur_token_is(Token::Rbrace) && !self.cur_token_is(Token::Eof) {
+            let stmt = self.parse_statement();
+            if let Some(stmt) = stmt {
+                statements.push(stmt);
+            }
+            self.next_token();
+        }
+
+        BlockStatement{
+            token,
+            statements
+        }
+    }
+
     fn parse_grouped_expression(&mut self) -> Option<Box<dyn Expression>> {
         self.next_token();
 
@@ -323,14 +378,9 @@ impl<'parser> Parser<'parser> {
 mod test {
 
     use std::{any::Any, ops::Deref};
-
     use super::Parser;
-    use crate::{
-        ast::{
-            Boolean, Expression, Identifier, InfixExpression, IntegerLiteral, Node, PrefixExpression, Statement
-        },
-        lexer::Lexer, Program,
-    };
+    use crate::Lexer;
+    use crate::ast::{Boolean, Expression, Identifier, InfixExpression, IntegerLiteral, Node, PrefixExpression, Statement};
 
     #[test]
     fn test_let_statements() {
@@ -380,7 +430,7 @@ return 993322;";
                 }
             } else {
                 panic!(
-                    "Statement is not Statement::Return as expected, got {:?}",
+                    "Statement is not Statement::Return as expected, got {}",
                     stmt
                 );
             }
@@ -407,8 +457,7 @@ return 993322;";
             token: _,
             name,
             value: _,
-        } = statement
-        {
+        } = statement {
             let val = &name.as_ref().unwrap().value;
             let token_literal = &name.as_ref().unwrap().token_literal();
 
@@ -444,18 +493,8 @@ return 993322;";
                     token: _,
                     expression,
                 } => {
-                    match expression
-                        .as_ref()
-                        .unwrap()
-                        .deref()
-                        .as_any()
-                        .downcast_ref::<Identifier>()
-                    {
-                        Some(ident) => {
-                            assert_eq!(ident.value, "foobar");
-                            assert_eq!(ident.token_literal(), "foobar");
-                        }
-                        None => panic!("A isn't Expression"),
+                    if let Some(exp) = expression{
+                        self::test_literal_expression(exp.deref(), &String::from("foobar"));
                     }
                 }
                 _ => panic!("Statement received is not type Statement::Expression"),
@@ -478,18 +517,11 @@ return 993322;";
                     token: _,
                     expression,
                 } => {
-                    match expression
-                        .as_ref()
-                        .unwrap()
-                        .deref()
-                        .as_any()
-                        .downcast_ref::<Boolean>()
-                    {
-                        Some(ident) => {
-                            assert!(ident.value,"ident.value is not true. got {}", ident.value);
-                            assert_eq!(ident.token_literal(), "true", "ident.token_literal() is not true, got {}", ident.token_literal());
-                        }
-                        None => panic!("Boolean isn't an Expression"),
+                    match expression {
+                        Some(exp) => {
+                            self::test_boolean_literal(exp.deref(), true);
+                        },
+                        None => panic!("expression is None")
                     }
                 }
                 _ => panic!("Statement received is not type Statement::Expression"),
@@ -512,18 +544,8 @@ return 993322;";
                     token: _,
                     expression,
                 } => {
-                    match expression
-                        .as_ref()
-                        .unwrap()
-                        .deref()
-                        .as_any()
-                        .downcast_ref::<IntegerLiteral>()
-                    {
-                        Some(ident) => {
-                            assert_eq!(ident.value, 238784);
-                            assert_eq!(ident.token_literal(), "238784");
-                        }
-                        None => panic!("A doesn't implement Expression trait"),
+                    if let Some(exp) = expression {
+                        self::test_literal_expression(exp.deref(), &238784);
                     }
                 }
                 _ => panic!("Statement received is not type Statement::Expression"),
@@ -533,22 +555,32 @@ return 993322;";
 
     #[test]
     fn test_parsing_prefix_expression() {
-        struct Input {
+        struct Input<'input> {
             input: &'static str,
             operator: &'static str,
-            integer_value: i32,
+            value: &'input dyn Any,
         }
 
         let input = [
             Input {
                 input: "!5;",
                 operator: "!",
-                integer_value: 5,
+                value: &5,
             },
             Input {
                 input: "-15",
                 operator: "-",
-                integer_value: 15,
+                value: &15,
+            },
+            Input {
+                input: "!true",
+                operator: "!",
+                value: &true,
+            },
+            Input {
+                input: "!false",
+                operator: "!",
+                value: &false,
             },
         ];
 
@@ -577,9 +609,10 @@ return 993322;";
                             {
                                 Some(exp) => {
                                     assert_eq!(exp.operator, test_case.operator);
-                                    if !test_integer_literal(
+                                    self::test_literal_expression(exp.right.deref(), &test_case.value);
+                                    if !test_literal_expression(
                                         exp.right.as_ref(),
-                                        test_case.integer_value,
+                                        test_case.value,
                                     ) {
                                         return;
                                     }
@@ -608,19 +641,19 @@ return 993322;";
 
     #[test]
     fn test_parsing_infix_expression() {
-        struct Input {
+        struct Input<'input> {
             input: &'static str,
-            left_value: i32,
+            left_value: &'input dyn Any,
             operator: &'static str,
-            right_value: i32,
+            right_value: &'input dyn Any,
         }
 
-        impl Input {
+        impl<'input> Input<'input> {
             fn new(
                 input: &'static str,
-                left_value: i32,
+                left_value: &'input dyn Any,
                 operator: &'static str,
-                right_value: i32,
+                right_value: &'input dyn Any,
             ) -> Self {
                 Self {
                     input,
@@ -632,14 +665,17 @@ return 993322;";
         }
 
         let input = [
-            Input::new("5+5", 5, "+", 5),
-            Input::new("5/ 5", 5, "/", 5),
-            Input::new("5-5", 5, "-", 5),
-            Input::new("5*5", 5, "*", 5),
-            Input::new("5>5", 5, ">", 5),
-            Input::new("5<5", 5, "<", 5),
-            Input::new("5 == 5", 5, "==", 5),
-            Input::new("5 != 5", 5, "!=", 5),
+            Input::new("5 + 5", &5, "+", &5),
+            Input::new("5/ 5", &5, "/", &5),
+            Input::new("5-5", &5, "-", &5),
+            Input::new("5*5", &5, "*", &5),
+            Input::new("5>5", &5, ">", &5),
+            Input::new("5<5", &5, "<", &5),
+            Input::new("5 == 5", &5, "==", &5),
+            Input::new("5 != 5", &5, "!=", &5),
+            Input::new("true == true", &true, "==", &true),
+            Input::new("true != false", &true, "!=", &false),
+            Input::new("false == false", &false, "==", &false),
         ];
 
         for test_case in input {
@@ -652,7 +688,7 @@ return 993322;";
                 eprintln!("{:?}", program.statements);
                 panic!("program.statements.len() != 1");
             }
-
+        
             if let Some(stmt) = program.statements.first() {
                 match stmt {
                     Statement::Expression {
@@ -660,28 +696,8 @@ return 993322;";
                         expression,
                     } => match expression {
                         Some(expression) => {
-                            match expression
-                                .as_ref()
-                                .as_any()
-                                .downcast_ref::<InfixExpression>()
-                            {
-                                Some(exp) => {
-                                    assert_eq!(exp.operator, test_case.operator);
-                                    if !test_integer_literal(
-                                        exp.right.as_ref(),
-                                        test_case.left_value,
-                                    ) {
-                                        return;
-                                    }
-
-                                    if !test_integer_literal(
-                                        exp.left.as_ref(),
-                                        test_case.right_value,
-                                    ) {
-                                        return;
-                                    }
-                                }
-                                None => panic!("Expression is not of type InfixExpression"),
+                            if !test_infix_expression(expression.deref(), test_case.left_value, test_case.operator, test_case.right_value){
+                                return
                             }
                         }
                         None => panic!("Expression is None"),
@@ -710,23 +726,42 @@ return 993322;";
             return test_integer_literal( exp, *v as i32);
         } else if let Some(v) = expected.downcast_ref::<String>() {
             return test_identifier(exp, v);
+        } else if let Some(v) = expected.downcast_ref::<bool>() {
+            return test_boolean_literal(exp, *v);
         }
-        panic!("exected is not of type String, i32 or i64");
+        false
+    }
+
+    fn test_boolean_literal(exp: &dyn Expression, value: bool) -> bool {
+        match exp.as_any().downcast_ref::<Boolean>() {
+            Some(bo) => {
+                assert_eq!(bo.value, value, "bo.value is not {}. got {}", value, bo.value);
+                assert_eq!(bo.token_literal(), format!("{}", value), "bo.token_literal() is not {}. got {}", value, bo.token_literal())
+            },
+            None => panic!("bo is not of type Boolean")
+        }
+
+        true
     }
 
     fn test_infix_expression(exp: &dyn Expression, left: &dyn Any, operator: &str, right: &dyn Any) -> bool {
         match exp.as_any().downcast_ref::<InfixExpression>() {
             Some(op_exp) => {
                 if !test_literal_expression(op_exp.left.deref(), left){
-                    return false
+                    let left_str = left.downcast_ref::<String>().expect("Can't downcast left to String");
+                    let error_msg= format!("op_exp.left is not {}. got {}", left_str, op_exp.left);
+                    panic!("{}", error_msg)
                 }
 
                 if op_exp.operator != operator {
-                    return false
+                    let error_msg= format!("op_exp.operator is not {}. got {}", operator, op_exp.operator);
+                    panic!("{}", error_msg);
                 }
 
                 if !test_literal_expression(op_exp.right.deref(), right){
-                    return false
+                    let right_str = right.downcast_ref::<String>().expect("Can't downcast right to String");
+                    let error_msg= format!("op_exp.righ is not {}. got {}", right_str, op_exp.right);
+                    panic!("{}", error_msg);
                 }
             }
             None => panic!("exp is not an InfixExpression")
@@ -763,7 +798,18 @@ return 993322;";
             let program = p.parse_program();
 
             assert_eq!(program.statements.len(), 1, "program.statements.len() is not 1. got {}", program.statements.len());
-
+            if let Some(stmt) = program.statements.first() {
+                match stmt {
+                    Statement::Expression { token: _, expression } => {
+                        if let Some(exp) = expression {
+                            assert_eq!(format!("{}", exp), format!("{}", tc.expected), "exp is not {}. got {}", tc.expected, exp);
+                        } else {
+                            panic!("expression is none")
+                        }
+                    },
+                    _ => panic!("stmt is not of type Statement::Expression")
+                }
+            }
         }
     }
 }
