@@ -164,6 +164,35 @@ impl IntegerLiteral {
     }
 }
 
+#[derive(Debug)]
+pub struct Boolean {
+    pub token: Token,
+    pub value: bool
+}
+
+impl Expression for Boolean {
+    fn expression_node(&self) {
+        
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Node for Boolean {
+    fn token_literal(&self) -> String {
+        self.token.get_literal()
+    }
+}
+
+impl Display for Boolean {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f,"{}", self.value)
+    }
+}
+
+
 // Prefix Expression
 #[derive(Debug)]
 pub struct PrefixExpression {

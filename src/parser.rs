@@ -1,9 +1,9 @@
 #![allow(dead_code)]
-use std::ops::Not;
 
 use crate::ast::{Expression, Identifier, InfixExpression, IntegerLiteral, PrefixExpression, Program, Statement};
 use crate::lexer::Lexer;
 use crate::token::Token;
+use crate::Boolean;
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum Precedence {
@@ -64,10 +64,12 @@ impl<'parser> Parser<'parser> {
             Token::Ident(_) => Some(Box::new(Identifier {
                 value: cur_token.get_literal(),
                 token: cur_token.clone(),
-            }) as Box<dyn Expression>),
+            })),
             Token::Int(_) => self.parse_integer_literal(),
             Token::Bang => self.parse_prefix_expression(),
             Token::Minus => self.parse_prefix_expression(),
+            Token::True => self.parse_boolean(),
+            Token::False => self.parse_boolean(),
             _ => None,
         }
     }
@@ -245,6 +247,27 @@ impl<'parser> Parser<'parser> {
         }))
     }
 
+    fn parse_boolean(&self) -> Option<Box<dyn Expression>> {
+        Some(Box::new(
+            Boolean{
+                token: self.cur_token.clone()?,
+                value: self.cur_token_is(Token::True)
+            }
+        ))
+    }
+
+    fn parse_grouped_expression(&mut self) -> Option<Box<dyn Expression>> {
+        self.next_token();
+
+        let exp = self.parse_expression(Precedence::Lowest);
+
+        if !self.expect_peek(Token::Rparen) {
+            return None
+        }
+
+        exp
+    }
+
     fn parse_expression_statement(&mut self) -> Option<Statement> {
         let stmt = Statement::Expression {
             token: self.cur_token.clone()?,
@@ -299,15 +322,14 @@ impl<'parser> Parser<'parser> {
 #[cfg(test)]
 mod test {
 
-    use std::ops::Deref;
+    use std::{any::Any, ops::Deref};
 
     use super::Parser;
     use crate::{
         ast::{
-            Expression, Identifier, InfixExpression, IntegerLiteral, Node, PrefixExpression,
-            Statement,
+            Boolean, Expression, Identifier, InfixExpression, IntegerLiteral, Node, PrefixExpression, Statement
         },
-        lexer::Lexer,
+        lexer::Lexer, Program,
     };
 
     #[test]
@@ -434,6 +456,40 @@ return 993322;";
                             assert_eq!(ident.token_literal(), "foobar");
                         }
                         None => panic!("A isn't Expression"),
+                    }
+                }
+                _ => panic!("Statement received is not type Statement::Expression"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_boolean_expression() {
+        let input = "true";
+        let mut l = Lexer::new(input);
+        let mut p = Parser::new(&mut l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(1, program.statements.len() as i32);
+        if let Some(stmt) = program.statements.first() {
+            match stmt {
+                Statement::Expression {
+                    token: _,
+                    expression,
+                } => {
+                    match expression
+                        .as_ref()
+                        .unwrap()
+                        .deref()
+                        .as_any()
+                        .downcast_ref::<Boolean>()
+                    {
+                        Some(ident) => {
+                            assert!(ident.value,"ident.value is not true. got {}", ident.value);
+                            assert_eq!(ident.token_literal(), "true", "ident.token_literal() is not true, got {}", ident.token_literal());
+                        }
+                        None => panic!("Boolean isn't an Expression"),
                     }
                 }
                 _ => panic!("Statement received is not type Statement::Expression"),
@@ -633,6 +689,81 @@ return 993322;";
                     _ => panic!("Statement is not of type Statement::Expression"),
                 }
             }
+        }
+    }
+
+    fn test_identifier(exp: &dyn Expression, value: &str) -> bool {
+        match exp.as_any().downcast_ref::<Identifier>() {
+            Some(ident) => {
+                assert_eq!(ident.value, value, "exp.value is not {}. got {}.", value, ident.value);
+                assert_eq!(ident.token_literal(), value, "ident.token_literal() is not {}. got {}", value, ident.value);
+            }
+            None => panic!("exp is not an Identifier")
+        }
+        true
+    }
+
+    fn test_literal_expression(exp: &dyn Expression, expected: &dyn Any) -> bool {
+        if let Some(v) = expected.downcast_ref::<i32>() {
+            return test_integer_literal( exp, *v);
+        } else if let Some(v) = expected.downcast_ref::<i64>() {
+            return test_integer_literal( exp, *v as i32);
+        } else if let Some(v) = expected.downcast_ref::<String>() {
+            return test_identifier(exp, v);
+        }
+        panic!("exected is not of type String, i32 or i64");
+    }
+
+    fn test_infix_expression(exp: &dyn Expression, left: &dyn Any, operator: &str, right: &dyn Any) -> bool {
+        match exp.as_any().downcast_ref::<InfixExpression>() {
+            Some(op_exp) => {
+                if !test_literal_expression(op_exp.left.deref(), left){
+                    return false
+                }
+
+                if op_exp.operator != operator {
+                    return false
+                }
+
+                if !test_literal_expression(op_exp.right.deref(), right){
+                    return false
+                }
+            }
+            None => panic!("exp is not an InfixExpression")
+        }
+        true
+    }
+
+    #[test]
+    fn test_operator_precedence_parsing(){
+        struct Input {
+            input: &'static str,
+            expected: &'static str
+        }
+
+        impl Input {
+            fn new(input: &'static str, expected: &'static str) -> Self{
+                Self{
+                    input,
+                    expected
+                }
+            }
+        }
+
+        let tests = [
+            Input::new("true", "true"),
+            Input::new("false", "false"),
+            Input::new("3 > 5 == false", "((3 > 5) == false)"),
+            Input::new("3 < 5 == true", "((3 < 5) == true)"),
+        ];
+
+        for tc in tests {
+            let mut l = Lexer::new(tc.input);
+            let mut p = Parser::new(&mut l);
+            let program = p.parse_program();
+
+            assert_eq!(program.statements.len(), 1, "program.statements.len() is not 1. got {}", program.statements.len());
+
         }
     }
 }
