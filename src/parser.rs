@@ -3,7 +3,7 @@
 use crate::ast::{Expression, Identifier, InfixExpression, IntegerLiteral, PrefixExpression, Program, Statement};
 use crate::lexer::Lexer;
 use crate::token::Token;
-use crate::{BlockStatement, Boolean, IfExpression};
+use crate::{BlockStatement, Boolean, FunctionLiteral, IfExpression};
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum Precedence {
@@ -71,6 +71,7 @@ impl<'parser> Parser<'parser> {
             Token::True => self.parse_boolean(),
             Token::False => self.parse_boolean(),
             Token::If => self.parse_if_expression(),
+            Token::Function => self.parse_function_literal(),
             _ => None,
         }
     }
@@ -292,12 +293,12 @@ impl<'parser> Parser<'parser> {
     }
 
     fn parse_block_statement(&mut self) -> BlockStatement {
+        println!("Parsing Block Statement!!");
         let token = self.cur_token.clone().unwrap();
         let mut statements: Vec<Statement> = vec![];
-
         self.next_token();
 
-        while self.cur_token_is(Token::Rbrace) && !self.cur_token_is(Token::Eof) {
+        while !self.cur_token_is(Token::Rbrace) && !self.cur_token_is(Token::Eof) {
             let stmt = self.parse_statement();
             if let Some(stmt) = stmt {
                 statements.push(stmt);
@@ -309,6 +310,62 @@ impl<'parser> Parser<'parser> {
             token,
             statements
         }
+    }
+
+    fn parse_function_literal(&mut self) -> Option<Box<dyn Expression>> {
+        if !self.expect_peek(Token::Lparen) {
+             return None
+        }
+        
+        let parameters = self.parse_function_parameters()?;
+        if !self.expect_peek(Token::Lbrace) {
+            return None
+        }
+
+        let body = self.parse_block_statement();
+        println!("{:?}", self.cur_token);
+
+        Some(Box::new(FunctionLiteral{
+            token: self.cur_token.clone().unwrap(),
+            parameters,
+            body
+        }))
+    }
+
+    fn parse_function_parameters(&mut self) -> Option<Vec<Identifier>>{
+        let mut identifier = vec![];
+
+        if self.peek_token_is(Token::Rparen) {
+            self.next_token();
+            return Some(identifier)
+        }
+
+        self.next_token();
+        let cur_token = self.cur_token.clone().unwrap();
+        let ident = Identifier{
+            value: cur_token.get_literal(),
+            token: cur_token
+        };
+
+        identifier.push(ident);
+
+        while self.peek_token_is(Token::Comma) {
+            self.next_token();
+            self.next_token();
+
+            let ident = Identifier{
+                token: self.cur_token.clone().unwrap(),
+                value: self.cur_token.clone().unwrap().get_literal()
+            };
+
+            identifier.push(ident);
+        }
+
+        if !self.expect_peek(Token::Rparen){
+            return None
+        }
+
+        Some(identifier)
     }
 
     fn parse_grouped_expression(&mut self) -> Option<Box<dyn Expression>> {
@@ -379,7 +436,7 @@ mod test {
 
     use std::{any::Any, ops::Deref};
     use super::Parser;
-    use crate::Lexer;
+    use crate::{FunctionLiteral, Lexer};
     use crate::ast::{Boolean, Expression, Identifier, InfixExpression, IntegerLiteral, Node, PrefixExpression, Statement};
 
     #[test]
@@ -748,7 +805,7 @@ return 993322;";
         match exp.as_any().downcast_ref::<InfixExpression>() {
             Some(op_exp) => {
                 if !test_literal_expression(op_exp.left.deref(), left){
-                    let left_str = left.downcast_ref::<String>().expect("Can't downcast left to String");
+                    let left_str = left.downcast_ref::<&str>().expect("Can't downcast left to String");
                     let error_msg= format!("op_exp.left is not {}. got {}", left_str, op_exp.left);
                     panic!("{}", error_msg)
                 }
@@ -810,6 +867,45 @@ return 993322;";
                     _ => panic!("stmt is not of type Statement::Expression")
                 }
             }
+        }
+    }
+
+    #[test]
+    fn test_functional_literal_parsing(){
+        let input = "fn(x,y){ x+y; }";
+        let mut l = Lexer::new(input);
+        let mut p = Parser::new(&mut l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 1, "program.statements is not 1. got {}", program.statements.len());
+
+        match program.statements.first().unwrap() {
+            Statement::Expression { token: _, expression } => {
+                match expression {
+                    Some(exp) => {
+                        match exp.as_any().downcast_ref::<FunctionLiteral>() {
+                            Some(fn_ltrl) => {
+                                assert_eq!(fn_ltrl.parameters.len(), 2, "fn_ltrl.parameters is not 2. got {}", fn_ltrl.parameters.len());
+                                test_literal_expression(&fn_ltrl.parameters[0], &String::from("x"));
+                                test_literal_expression(&fn_ltrl.parameters[1], &String::from("y"));
+
+                                assert_eq!(fn_ltrl.body.statements.len(), 1, "fn_ltrl.body.statements is not 1. got {}", fn_ltrl.body.statements.len());
+
+                                match &fn_ltrl.body.statements[0] {
+                                    Statement::Expression { token: _, expression } => {
+                                        test_infix_expression(expression.as_ref().unwrap().deref(), &String::from("x"), "+", &String::from("y"));
+                                    },
+                                    _ => panic!("function body statement is not Expression")
+                                }
+                            },
+                            None => panic!("expression cannot be casted to a FunctionLiteral")
+                        }
+                    },
+                    None => panic!("expression is None")
+                }
+            },
+            _ => panic!("Statement is not of type Expression")
         }
     }
 }
