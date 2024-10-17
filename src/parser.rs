@@ -3,7 +3,7 @@
 use crate::ast::{Expression, Identifier, InfixExpression, IntegerLiteral, PrefixExpression, Program, Statement};
 use crate::lexer::Lexer;
 use crate::token::Token;
-use crate::{BlockStatement, Boolean, CallExpression, FunctionLiteral, IfExpression};
+use crate::ast::{BlockStatement, Boolean, CallExpression, FunctionLiteral, IfExpression};
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum Precedence {
@@ -463,7 +463,8 @@ mod test {
 
     use std::{any::Any, ops::Deref};
     use super::Parser;
-    use crate::{FunctionLiteral, Lexer};
+    use crate::ast::FunctionLiteral;
+    use crate::lexer::Lexer;
     use crate::ast::{Boolean, Expression, Identifier, InfixExpression, IntegerLiteral, Node, PrefixExpression, Statement};
 
     #[test]
