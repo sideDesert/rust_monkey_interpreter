@@ -285,6 +285,42 @@ impl Node for  IfExpression{
     }
 }
 
+// Call Expression
+#[derive(Debug)]
+pub struct CallExpression {
+    pub token: Token,
+    pub function: Option<Box<dyn Expression>>,
+    pub arguments: Vec<Box<dyn Expression>>
+}
+
+impl Expression for CallExpression {
+    fn expression_node(&self) {
+        
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+}
+
+impl Display for CallExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.function.as_ref().unwrap())?;
+        write!(f, "(")?;
+        write!(f, "{}, ", self.arguments.iter().map(|arg| arg.to_string()).collect::<Vec<String>>().join(", "))?;
+        write!(f, ")")?;
+        Ok(())
+    }
+}
+
+impl Node for CallExpression {
+    fn token_literal(&self) -> String {
+        self.token.get_literal()
+    }
+}
+
+
 // Function Literal 
 #[derive(Debug)]
 pub struct FunctionLiteral {
@@ -304,9 +340,7 @@ impl Expression for FunctionLiteral{
 impl Display for FunctionLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "fn( ")?;
-        for param in self.parameters.iter() {
-            write!(f, "{}, ", param)?;
-        }
+        write!(f, "{}", self.parameters.iter().map(|arg| arg.to_string()).collect::<Vec<String>>().join(", "))?;
         writeln!(f, ")")?;
         
         write!(f, "{}", self.body)?;

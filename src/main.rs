@@ -19,13 +19,52 @@ mod welcome {
                 println!("{welcome_msg}");
             }
         }
-
         println!("Feel free to type in commands!");
 
     }
 }
 
 
+
+fn test_operator_precedence_parsing(){
+    struct Input {
+        input: &'static str,
+        expected: &'static str
+    }
+
+    impl Input {
+        fn new(input: &'static str, expected: &'static str) -> Self{
+            Self{
+                input,
+                expected
+            }
+        }
+    }
+
+    let tests = [
+        Input::new("add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))","add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8), ), )"),
+    ];
+
+    for tc in tests {
+        let mut l = Lexer::new(tc.input);
+        let mut p = Parser::new(&mut l);
+        let program = p.parse_program();
+
+        println!("{:?}", program.statements);
+        if let Some(stmt) = program.statements.first() {
+            match stmt {
+                Statement::Expression { token: _, expression } => {
+                    if let Some(exp) = expression {
+                        assert_eq!(format!("{}", exp), format!("{}", tc.expected), "exp is not {}. got {}", tc.expected, exp);
+                    } else {
+                        panic!("expression is none")
+                    }
+                },
+                _ => panic!("stmt is not of type Statement::Expression")
+            }
+        }
+    }
+}
 fn test_parsing_infix_expression() {
     struct Input {
         input: &'static str,
@@ -122,7 +161,7 @@ fn test_integer_literal(il: &dyn Expression, value: i32) -> bool {
 }
 
 fn main() {
-    test_parsing_infix_expression();
+    test_operator_precedence_parsing();
     welcome::print();
     repl::start();
 }

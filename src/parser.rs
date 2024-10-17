@@ -3,7 +3,7 @@
 use crate::ast::{Expression, Identifier, InfixExpression, IntegerLiteral, PrefixExpression, Program, Statement};
 use crate::lexer::Lexer;
 use crate::token::Token;
-use crate::{BlockStatement, Boolean, FunctionLiteral, IfExpression};
+use crate::{BlockStatement, Boolean, CallExpression, FunctionLiteral, IfExpression};
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum Precedence {
@@ -13,6 +13,7 @@ pub enum Precedence {
     Sum = 3,
     Product = 4,
     Prefix = 5,
+    Call = 6,
 }
 
 impl Precedence {
@@ -30,6 +31,7 @@ impl Precedence {
             Token::Minus => Self::Sum,
             Token::Slash => Self::Product,
             Token::Asterisk => Self::Product,
+            Token::Lparen => Self::Call,
             _ => Self::Lowest
         }
     }
@@ -76,6 +78,7 @@ impl<'parser> Parser<'parser> {
         }
     }
 
+
     pub fn infix_parse_fns(&mut self,token: &Token, left: Box<dyn Expression>) -> Option<Box<dyn Expression>> {
         match token {
             Token::Plus => self.parse_infix_expression(left),
@@ -86,10 +89,10 @@ impl<'parser> Parser<'parser> {
             Token::NotEq => self.parse_infix_expression(left),
             Token::Lt => self.parse_infix_expression(left),
             Token::Gt => self.parse_infix_expression(left),
+            Token::Lparen => self.parse_call_expression(left).map(|expr| expr as Box<dyn Expression>),
             _ => None,
         }
     }
-
     pub fn parse_program(&mut self) -> Program {
         let mut program = Program::new();
         while self.cur_token != Some(Token::Eof) {
@@ -132,48 +135,38 @@ impl<'parser> Parser<'parser> {
     }
 
     fn parse_let_statement(&mut self) -> Option<Statement> {
-        let mut stmt =
-            Statement::new(self.cur_token.clone()?).expect("Expected Let Token, got {token}");
-        if let Statement::Let {
-            token: _,
-            ref mut name,
-            value: _,
-        } = &mut stmt
-        {
-            if !matches!(self.peek_token, Some(Token::Ident(_))) {
-                return None;
-            }
-
-            self.next_token();
-
-            *name = Some(Identifier::new(self.cur_token.clone()?));
-            if !self.expect_peek(Token::Assign) {
-                return None;
-            }
-
-            // TODO: Skipping expression until semicolon cuz we noobies
-            while !self.cur_token_is(Token::Semicolon) {
-                self.next_token();
-            }
-
-            return Some(stmt);
+        if !matches!(self.peek_token, Some(Token::Ident(_))) {
+            return None;
         }
-        None
+
+        self.next_token();
+
+        let name = Some(Identifier::new(self.cur_token.clone()?));
+        if !self.expect_peek(Token::Assign) {
+            return None;
+        }
+
+        // TODO: Skipping expression until semicolon cuz we noobies
+        self.next_token();
+
+        let value =  self.parse_expression(Lowest);
+        if self.peek_token_is(Token::Semicolon) {
+            self.next_token();
+        }
+
+        Some(Statement::Let { token: Token::Let, name,  value })
     }
 
     fn parse_return_statement(&mut self) -> Option<Statement> {
-        let mut stmt =
-            Statement::new(self.cur_token.clone()?).expect("Expected Return token, got {token}");
-        if let Statement::Return { token: _, value: _ } = &mut stmt {
+
+        self.next_token();
+        let value = self.parse_expression(Lowest);
+
+        if self.peek_token_is(Token::Semicolon){
             self.next_token();
-
-            while !self.cur_token_is(Token::Semicolon) {
-                self.next_token();
-            }
-
-            return Some(stmt);
         }
-        None
+
+        Some(Statement::Return { token: Token::Return,  value })
     }
 
     fn no_prefix_parse_fn_errors(&mut self, t: Token) {
@@ -283,7 +276,7 @@ impl<'parser> Parser<'parser> {
             }
             alternative = Some(self.parse_block_statement());
         }
-        
+
         Some(Box::new(IfExpression{
             token: self.cur_token.clone()?,
             alternative,
@@ -293,7 +286,6 @@ impl<'parser> Parser<'parser> {
     }
 
     fn parse_block_statement(&mut self) -> BlockStatement {
-        println!("Parsing Block Statement!!");
         let token = self.cur_token.clone().unwrap();
         let mut statements: Vec<Statement> = vec![];
         self.next_token();
@@ -314,16 +306,15 @@ impl<'parser> Parser<'parser> {
 
     fn parse_function_literal(&mut self) -> Option<Box<dyn Expression>> {
         if !self.expect_peek(Token::Lparen) {
-             return None
+            return None
         }
-        
+
         let parameters = self.parse_function_parameters()?;
         if !self.expect_peek(Token::Lbrace) {
             return None
         }
 
         let body = self.parse_block_statement();
-        println!("{:?}", self.cur_token);
 
         Some(Box::new(FunctionLiteral{
             token: self.cur_token.clone().unwrap(),
@@ -366,6 +357,42 @@ impl<'parser> Parser<'parser> {
         }
 
         Some(identifier)
+    }
+
+    fn parse_call_expression(&mut self, function: Box<dyn Expression>) -> Option<Box<CallExpression>> {
+        let arguments = self.parse_call_arguments();
+        Some(Box::new(CallExpression{
+            token: self.cur_token.clone()?,
+            arguments: arguments?,
+            function: Some(function)
+        }))
+    } 
+
+    fn parse_call_arguments(&mut self) -> Option<Vec<Box<dyn Expression>>> {
+        let mut args = vec![];
+        if self.peek_token_is(Token::Rparen) {
+            self.next_token();
+            return Some(args);
+        }
+
+        self.next_token();
+        let exp = self.parse_expression(Lowest).expect("expression is None");
+
+        args.push(exp);
+
+        while self.peek_token_is(Token::Comma){
+            self.next_token();
+            self.next_token();
+            if let Some(exp) = self.parse_expression(Lowest){
+                args.push(exp);
+            }
+        }
+
+        if !self.expect_peek(Token::Rparen){
+            return None;
+        } 
+
+        Some(args)
     }
 
     fn parse_grouped_expression(&mut self) -> Option<Box<dyn Expression>> {
@@ -745,7 +772,7 @@ return 993322;";
                 eprintln!("{:?}", program.statements);
                 panic!("program.statements.len() != 1");
             }
-        
+
             if let Some(stmt) = program.statements.first() {
                 match stmt {
                     Statement::Expression {
@@ -847,6 +874,10 @@ return 993322;";
             Input::new("false", "false"),
             Input::new("3 > 5 == false", "((3 > 5) == false)"),
             Input::new("3 < 5 == true", "((3 < 5) == true)"),
+            Input::new("a + add(b * c) + d", "((a + add((b * c), )) + d)"),
+            Input::new("add(a + b + c * d / f + g)","add((((a + b) + ((c * d) / f)) + g), )"),
+            Input::new("add(a, b, add(b, c))","add(a, b, add(b, c, ), )"),
+            //Input::new("add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))","add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8), ), )"),
         ];
 
         for tc in tests {
@@ -854,7 +885,8 @@ return 993322;";
             let mut p = Parser::new(&mut l);
             let program = p.parse_program();
 
-            assert_eq!(program.statements.len(), 1, "program.statements.len() is not 1. got {}", program.statements.len());
+            println!("{:?}", program.statements);
+            assert_eq!(program.statements.len(), 1, "program.statements.len() is not 1. got {}.\n\n DUMP:\n{:?}", program.statements.len(), program.statements);
             if let Some(stmt) = program.statements.first() {
                 match stmt {
                     Statement::Expression { token: _, expression } => {
@@ -906,6 +938,68 @@ return 993322;";
                 }
             },
             _ => panic!("Statement is not of type Expression")
+        }
+    }
+
+    #[test]
+    fn test_function_parameter_parsing(){
+        struct Input {
+            input: &'static str,
+            expected: Vec<&'static str>
+        }
+
+        impl Input {
+            fn new(input: &'static str, expected: Vec<&'static str>) -> Self {
+                Input {
+                    input,
+                    expected
+                }
+            }
+
+        }
+
+        let tests=  [
+            Input::new("fn(){}", [].to_vec()),
+            Input::new("fn(x){}", ["x"].to_vec()),
+            Input::new("fn(x,y,z){}", ["x","y","z"].to_vec())
+        ];
+
+        for test in tests {
+            let input = test.input;
+
+            let mut l = Lexer::new(input);
+            let mut p = Parser::new(&mut l);
+            let program = p.parse_program();
+            check_parser_errors(&p);
+
+            assert_eq!(program.statements.len(), 1, "program.statements is not 1. got {}", program.statements.len());
+
+            match program.statements.first().unwrap() {
+                Statement::Expression { token: _, expression } => {
+                    match expression {
+                        Some(exp) => {
+                            match exp.as_any().downcast_ref::<FunctionLiteral>() {
+                                Some(fn_ltrl) => {
+                                    assert_eq!(fn_ltrl.parameters.len(), test.expected.len(), "fn_ltrl.parameters is not {}. got {}", test.expected.len(), fn_ltrl.parameters.len());
+
+
+                                    for (i, ident) in test.expected.iter().enumerate() {
+                                        if !test.expected.is_empty(){
+                                            println!("{:?}", fn_ltrl.parameters);
+                                            println!("{:?}", &String::from(*ident));
+
+                                            test_literal_expression(&fn_ltrl.parameters[i], &String::from(*ident));
+                                        }
+                                    }
+                                },
+                                None => panic!("expression cannot be casted to a FunctionLiteral")
+                            }
+                        },
+                        None => panic!("expression is None")
+                    }
+                },
+                _ => panic!("Statement is not of type Expression")
+            }
         }
     }
 }
